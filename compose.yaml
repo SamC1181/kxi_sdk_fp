@@ -176,6 +176,7 @@ services:
     environment:
       - KXI_NAME=kxi-spw
       - KXI_PORT=${kxi_port_spw}
+      - KXI_KAFKA_BROKERS=kxi-db-redpanda-1:9092
       - KXI_SP_SPEC=/mnt/config/src/tradeSP.q   # Point to the stream processor script
       - KXI_SP_PARENT_HOST=kxi-spc:${kxi_port_spc}     # Point to the parent Controller
       - KXI_SP_DATABASE_HOST=kxi-gw:${kxi_port_gw_qipc}
@@ -197,6 +198,8 @@ services:
       - start
       - --overprovisioned
       - --node-id 0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://kxi-db-redpanda-1:9092
       - --smp=1
       - --memory=1G
       - --reserve-memory=0M
@@ -206,6 +209,5 @@ services:
     ports:
       - "9092:9092"
       - "9644:9644"
-    networks:
-      - default
+    networks: [kx]
 

@@ -1,21 +1,20 @@
-// define schema for trade table
-schema:([] sym:`symbol$(); px:`float$(); size:`int$(); ts:`timestamp$());
+//Initialise trade schema
+schema:([] sym:`symbol$(); px:`float$(); size:`int$());
 
-//read from redpanda
-consumer:.sp.read.fromKafka[
-  `tradeTopic;
-  `bootstrap.servers`group.id!("kxi-db-redpanda-1:9092";"sp-consumer-1")
-];
 
-// parse and cast data to kdb table
-parsed:consumer .sp.map each {
-  (-1!schema) upsert enlist each .j.k x
-};
+//read messages from redpanda kafka broker
+collector: .qsp.read.fromKafka[`tradeTopic; "kxi-db-redpanda-1:9092"]; 
 
-// optional: write to Parquet ---
-pq:parsed .sp.write.toParquet["/data/parquet/trades"];
+//decode json messages
+decoder: collector .qsp.decode.json[.qsp.use``decodeEach!11b];
 
-// optional: publish to rt
-rt:parsed .sp.write.toPublisher[`tradeRT];
+//cast messages to trade table schema
+transform: decoder .qsp.transform.schema[schema]; 
 
-pipeline:pq;
+//record timestamp on message ingestion
+stamp: transform .qsp.map[{[data] update ts:.z.p from data}];
+
+//write records to database
+writer: stamp .qsp.v2.write.toDatabase[`trade; .qsp.use (!) . flip ((`target; "kxi-sm:10001");(`overwrite; 0b))];
+
+.qsp.run writer;

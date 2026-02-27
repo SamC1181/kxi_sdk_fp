@@ -4,38 +4,19 @@ labels:
   region: us
 
 tables:
-  taxi:
+  trade:
     type: partitioned
-    prtnCol: pickup
-    sortColsDisk: [vendor]
+    prtnCol: ts
+    sortColsDisk: [sym]
     columns:
-      - name: vendor
+      - name: sym
         type: symbol
-        attrDisk: parted
-      - name: pickup
+      - name: px
+        type: float
+      - name: size
+        type: int
+      - name: ts
         type: timestamp
-      - name: dropoff
-        type: timestamp
-      - name: passengers
-        type: short
-      - name: distance
-        type: real
-      - name: fare
-        type: real
-      - name: extra
-        type: real
-      - name: tax
-        type: real
-      - name: tip
-        type: real
-      - name: tolls
-        type: real
-      - name: fees
-        type: real
-      - name: total
-        type: real
-      - name: payment_type
-        type: symbol
 
 bus:
   stream:
