@@ -39,7 +39,7 @@ sudo docker exec -it kxi-db-redpanda-1 rpk topic produce tradeTopic
 
 # Stream Processor
 
-In this app, I utilize a stream processor architecture to capture messages published to a kafka broker, decode the messages, transform them to expected schema and map the current timestamp before writing the incoming records to the database 
+In this app, I utilize a stream processor architecture to capture messages published to a kafka broker, decode the messages, transform them to expected schema and map the current timestamp before writing the incoming records to the database. This could be connected to any kafka feed and using KXI SDK's window/map functionality can be analysed and persisted to suit the user's data requirements
 
 
 # Query
