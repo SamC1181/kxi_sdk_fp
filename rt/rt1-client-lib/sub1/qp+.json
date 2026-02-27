@@ -1,0 +1,4 @@
+{
+    "sub1":{"depends":["clib"],"entry":["sub1.q"]},
+    "sub1_core":{"depends":["sub1_core"],"entry":["sub_core.q"]}
+}

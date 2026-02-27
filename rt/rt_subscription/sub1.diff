@@ -1,0 +1,298 @@
+diff --git a/sub1/Makefile.windows b/sub1/Makefile.windows
+new file mode 100644
+index 0000000..4e2f982
+--- /dev/null
++++ b/sub1/Makefile.windows
+@@ -0,0 +1,39 @@
++LINK = clib/consts.h clib/reg.h clib/reg.c clib/hm.c clib/hm.h clib/err.c clib/err.h clib/pos.c clib/probe.h clib/probe.c 
++
++qp: link
++	qp build sub1
++	#cleanup
++	find . -name "sub1.*.qpk" -exec zip {} -d "sub1/sub_core.q*" "sub1/*/*/log.*" "sub1/exampe/*" "sub1/examp*" \;
++	#find . -name "*.qpk" -exec zip {} -d "*/*/*.h" \;
++
++local: link
++	make -C clib
++
++lib: link rt1_core_sub.zip
++
++link: $(LINK)
++
++clib/%: ../common/%
++	cp -f $< $@ && chmod 444 $@
++
++clib/%: ../common2/%
++	cp -f $< $@ && chmod 444 $@
++
++rt1_core_sub.zip:
++	docker build -t rt_gcc -f Docker.gcc .
++	docker build -t rt_mingw -f Docker.mingw .
++	mkdir -p rt/include rt/lib
++	cp clib/rt1_core_sub.h clib/rt1_core_filter.h rt/include
++	cp -r example rt/
++	docker run --rm -v `pwd`/clib:/a -w /a --user $(id -u):$(id -g) rt_gcc make clean clib
++	cp clib/rt1_core_sub_l64.o rt/lib
++	docker run --rm -v `pwd`/clib:/a -w /a --user $(id -u):$(id -g) rt_gcc make clean
++	docker run --rm -v `pwd`/clib:/a -w /a --user $(id -u):$(id -g) rt_mingw make W64=1 clean clib
++	cp clib/rt1_core_sub_w64.o rt/lib
++	docker run --rm -v `pwd`/clib:/a -w /a --user $(id -u):$(id -g) rt_mingw make W64=1 clean
++	zip -9 -r -m $@ rt
++
++clean:
++	-rm -f $(LINK) rt1_core_sub.zip
++	-make -C clib clean
++	-qp clean
+diff --git a/sub1/clib/Makefile.windows b/sub1/clib/Makefile.windows
+new file mode 100644
+index 0000000..04701f6
+--- /dev/null
++++ b/sub1/clib/Makefile.windows
+@@ -0,0 +1,62 @@
++ifdef W64
++#CC=x86_64-w64-mingw32-gcc-posix -std=gnu99 -fPIC -DKXVER=3 -O3
++CC=x86_64-w64-mingw32-gcc-posix -fPIC -std=gnu99 -DKXVER=3 -g
++#LN=x86_64-w64-mingw32-gcc-posix -shared
++LN=x86_64-w64-mingw32-gcc-posix -shared -fPIC -std=gnu99 -DKXVER=3 -g  
++LD=x86_64-w64-mingw32-ld
++CLIB=rt1_core_sub_w64.lib
++CLIB_SO=rt1_core_sub_w64.dll
++CLIB_KDB=-l:c.lib
++DLL=/usr/x86_64-w64-mingw32/bin/dlltool
++else
++ifdef DEBUG
++CC=gcc -g -ggdb3 -std=gnu99 -fPIC -DKXVER=3
++else ifdef COV
++CC=gcc --coverage -std=gnu99 -fPIC -DKXVER=3
++LNOPT=-coverage
++else
++CC=gcc -std=gnu99 -fPIC -DKXVER=3 -O3
++endif
++LN=gcc -shared
++LD=ld
++CLIB=rt1_core_sub_l64.o
++CLIB_SO=rt1_core_sub_l64.so
++endif
++
++HEADERS=version.h rt1_core_sub.h rt1_core_sub_ext.h rt1_core_filter.h reg.h common.h err.h hm.h
++CLIB_OBJS=rt1_core_sub.o rt1_core_filter.o uncomp.o common.o hm.o
++QSUB1_CORE_OBJS=$(CLIB) qsub1_core.o reg.o
++QSUB1_CORE_SO=sub1_core.so
++QSUB1_OBJS=$(CLIB) qsub1.o pos.o reg.o prune.o peek.o err.o probe.o
++QSUB1_SO=sub1.so
++
++lib: version.h $(CLIB) $(QSUB1_CORE_SO) $(QSUB1_SO)
++
++clib: version.h $(CLIB)
++
++version.h:
++	printf '"%s"' `(cat ../BRANCH.txt || echo n/a)` > version.h
++
++%.o : %.c $(HEADERS) Makefile
++	$(CC) -c $<
++
++$(QSUB1_CORE_SO): $(QSUB1_CORE_OBJS)
++	$(LN) $^ -o $@ $(LNOPT)
++
++$(QSUB1_SO): $(QSUB1_OBJS)
++	$(LN) $^ -o $@ $(LNOPT)
++
++$(CLIB): $(CLIB_OBJS)
++	$(LD) -r $^ -o $@
++
++dlltool:
++	$(DLL) -v -l libq.a -d q.def
++
++$(CLIB_SO): $(CLIB_OBJS) 
++	$(LN) $^ -o $@ -L. -l:libq.a $(LNOPT)
++
++clean:
++	-rm version.h
++	-rm $(CLIB_OBJS) $(QSUB1_CORE_OBJS) $(QSUB1_OBJS)
++	-rm *.gcno *.gcda
++	-rm $(QSUB1_CORE_SO) $(QSUB1_SO)
+diff --git a/sub1/clib/peek.c b/sub1/clib/peek.c
+index 1047c92..b3f4a7b 100644
+--- a/sub1/clib/peek.c
++++ b/sub1/clib/peek.c
+@@ -16,9 +16,29 @@ Z K peek_read(int h, int offs, int len, K arg)
+     R x;
+ }
+ 
++Z K identity()
++{
++    K identity = ka(101);
++    identity->g = 0;
++
++    return identity;
++}
++
+ Z K peek_kxi(int h, int offs, int len, K arg)
+ {
+-    Z K fields=0; if(!fields) fields=k(0,"`time`exp`corr`origin`s0`s1`len",0);
++    Z K fields=0;
++    if(!fields) {
++        fields = ktn(KS, 7);
++        J i = 0;
++        kS(fields)[i++] = ss("ts");
++        kS(fields)[i++] = ss("to");
++        kS(fields)[i++] = ss("corr");
++        kS(fields)[i++] = ss("orig");
++        kS(fields)[i++] = ss("s0");
++        kS(fields)[i++] = ss("s1");
++        kS(fields)[i++] = ss("len");
++        //fields=k(0,"`time`exp`corr`origin`s0`s1`len",0);
++    }
+     if(101==arg->t && 0==arg->g) arg=fields;
+     if(arg->t!=KS && arg->t!=-KS) R krr("type");
+     kxi_message_preview pr;
+@@ -39,7 +59,7 @@ Z K peek_kxi(int h, int offs, int len, K arg)
+                 for(;j-->0;) if(kS(fields)[j]==ss_[i]) break;
+                 switch(j)
+                 {
+-                    case-1: ks_[i] = k(0,"::",0);break;
++                    case-1: ks_[i] = identity();break;
+                     case 0: ks_[i] = ktj(-KP,pr.timestamp);break;
+                     case 1: ks_[i] = ki(pr.timeout);break;
+                     case 2: ks_[i] = kj(pr.correlator);break;
+diff --git a/sub1/clib/prune.c b/sub1/clib/prune.c
+index 1f8444e..4c23bcd 100644
+--- a/sub1/clib/prune.c
++++ b/sub1/clib/prune.c
+@@ -12,6 +12,7 @@
+ #include <fcntl.h>
+ #include <dirent.h>
+ #include <pthread.h>
++#include <string.h>
+ 
+ ////////////////////////////////////////////////////////
+ /// PRUNE
+diff --git a/sub1/clib/rt1_core_filter.c b/sub1/clib/rt1_core_filter.c
+index 1bb7c40..3680dc4 100644
+--- a/sub1/clib/rt1_core_filter.c
++++ b/sub1/clib/rt1_core_filter.c
+@@ -154,7 +154,18 @@ static int kxi_tracker_reader(void*_ctx, rt_pos pos[2], int h, long offs, int le
+     if(ctx->cb.message)
+     {
+           Z K x = (K)0;
+-          if (!x) { x = k(0,"`ts`to`corr`orig`s0`s1`len",0); }
++          if (!x) {
++            x = ktn(KS, 7);
++            J i = 0;
++            kS(x)[i++] = ss("ts");
++            kS(x)[i++] = ss("to");
++            kS(x)[i++] = ss("corr");
++            kS(x)[i++] = ss("orig");
++            kS(x)[i++] = ss("s0");
++            kS(x)[i++] = ss("s1");
++            kS(x)[i++] = ss("len");
++            //x = k(0,"`ts`to`corr`orig`s0`s1`len",0);
++          }
+           K meta = xD(r1(x),knk(7,
+             ktj(-KP,preview.timestamp), ki(preview.timeout), kj(preview.correlator),
+             ks((S)preview.origin),ks((S)preview.payload.s0),ks((S)preview.payload.s1), ki(len)));
+diff --git a/sub1/clib/rt1_core_sub.c b/sub1/clib/rt1_core_sub.c
+index 35f5dc7..7c9e0e1 100644
+--- a/sub1/clib/rt1_core_sub.c
++++ b/sub1/clib/rt1_core_sub.c
+@@ -69,9 +69,12 @@ typedef struct
+ #define BLOCKER(a,b) {log->blocker.sess=a;log->blocker.no=b;};
+ 
+ //Creates position from (sess,no,offs)
+-STATIC long create_pos(int sess, int no, int offs)
++STATIC size_t create_pos(int sess, int no, int offs)
+ {
+-    return (((long)sess)<<(64-RT_SESSION_BITS)) | (((long)no)<<RT_POS_OFFS_BITS) | (long)offs ;
++    size_t result = (((size_t)sess)<<(64-RT_SESSION_BITS)) | (((size_t)no)<<RT_POS_OFFS_BITS) | (size_t)offs;
++    //printf("sess = %llu, no=%llu, off=%llu, pos=%llu\n", sess, no, offs, result);
++    return result;
++    //return (((long)sess)<<(64-RT_SESSION_BITS)) | (((long)no)<<RT_POS_OFFS_BITS) | (long)offs ;
+ }
+ 
+ //Read count bytes. Returns count or -1 if can't read all.
+@@ -445,12 +448,14 @@ STATIC int can_read_n(log_t* log, int need)
+             rt_pos pos[2];
+             pos[0] = create_pos(log->curr.k.sess,log->curr.k.no,log->offs-RT_LOG_HEADER_LEN);
+             pos[1] = create_pos(next.sess,next.no,0);
++            //printf("From pos = %llu, to pos = %llu\n", pos[0], pos[1]);
+             if(0==next.no && log_is_clean_session(log,next.sess))
+             {                                           //report hard-reset
+                 log->cb.event(log->cb.ctx,pos,RT1_EVENT_RESET);
+             }
+             else
+             {
++                //printf("Rolling log");
+                 log->cb.event(log->cb.ctx,pos,RT1_EVENT_ROLL);
+             }
+             log_roll(log,next.sess,next.no,RT_LOG_HEADER_LEN);
+@@ -468,6 +473,7 @@ STATIC int can_read_n(log_t* log, int need)
+             rt_pos pos[2];
+             pos[0] = create_pos(log->curr.k.sess,log->curr.k.no,log->offs-RT_LOG_HEADER_LEN);
+             pos[1] = create_pos(next.sess,next.no,0);
++            //printf("From pos = %llu, to pos = %llu\n", pos[0], pos[1]);
+             if(is_badtail || pos[0]>0)                  //skip events when old pos is 0, unless a bad-tail
+             {
+                 log->cb.event(log->cb.ctx,pos,
+@@ -541,6 +547,7 @@ STATIC int read_1(log_t* log)
+                         rt_pos pos[2];
+                         pos[0] = create_pos(log->curr.k.sess,log->curr.k.no,log->offs-RT_LOG_HEADER_LEN);
+                         pos[1] = create_pos(next.sess,next.no,0);
++                        //printf("From pos = %llu, to pos = %llu\n", pos[0], pos[1]);
+                         log->cb.event(log->cb.ctx,pos,RT1_EVENT_BADTAIL);   //report badtail
+                         if(0==next.no && log_is_clean_session(log,next.sess))
+                         {                           //report hard-reset
+@@ -578,6 +585,7 @@ STATIC int read_1(log_t* log)
+                 rt_pos pos[2];
+                 pos[0] = create_pos(log->curr.k.sess,log->curr.k.no,log->offs-RT_LOG_HEADER_LEN);
+                 pos[1] = pos[0] + RT_MSG_HEADER_LEN + log->msg.len;
++                //printf("From pos = %llu, to pos = %llu\n", pos[0], pos[1]);
+                 if(log->cb.message)
+                 {
+                     void* buffer = log->cb.alloc(log->msg.len);
+@@ -630,6 +638,7 @@ STATIC log_t* stream_create(const char* path, rt_pos pos, rt1_callbacks cb)
+ //Public API impl
+ void* rt1_core_subscribe(const char* path, rt_pos index_pos, rt1_callbacks cb)
+ {
++    //printf("in subscribe\n");
+     if((!cb.message)&&(!cb.reader)) return 0;
+     if(!cb.event) return 0;
+     if(!cb.alloc) cb.alloc = malloc;
+@@ -641,6 +650,7 @@ void* rt1_core_subscribe(const char* path, rt_pos index_pos, rt1_callbacks cb)
+ 
+ int rt1_core_read(void*_stream, int cnt)
+ {
++    //printf("in read\n");
+     log_t* log = _stream;
+     int c = 0;
+     log->halted = 0;
+@@ -732,3 +742,8 @@ void rt1_core_unsubscribe(void*_stream)
+     log_free(log);
+     free(log);
+ }
++
++void rt1_free(void* ptr)
++{
++    free(ptr);
++}
+diff --git a/sub1/clib/rt1_core_sub.h b/sub1/clib/rt1_core_sub.h
+index 0a5ddbb..ad63899 100644
+--- a/sub1/clib/rt1_core_sub.h
++++ b/sub1/clib/rt1_core_sub.h
+@@ -5,7 +5,7 @@
+ extern "C" {
+ #endif
+ 
+-typedef unsigned long rt_pos;
++typedef size_t rt_pos;
+ 
+ #define RT1_EVENT_ROLL      0
+ #define RT1_EVENT_BADMSG    1
+@@ -131,6 +131,8 @@ rt1_stream_info rt1_core_info(void* stream);
+  */
+ void  rt1_core_unsubscribe(void* stream);
+ 
++void rt1_free(void* ptr);
++
+ #ifdef __cplusplus
+ }
+ #endif

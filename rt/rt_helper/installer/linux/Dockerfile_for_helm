@@ -1,0 +1,62 @@
+FROM rockylinux:9
+
+ARG API_TOKEN
+ARG REPLICATOR_VERSION
+ARG CI_COMMIT_TAG
+
+
+
+RUN yum -y install epel-release && yum update -y && \
+    yum -y groupinstall "Development Tools"
+
+RUN yum -y install \
+    jq vim tar zip unzip cmake make patchelf \
+    procps && \
+    yum clean all
+
+ENV RT_PUB_CPP_DIR rt-publisher-cpp-${CI_COMMIT_TAG}
+RUN mkdir -p /opt/dev/${RT_PUB_CPP_DIR}
+COPY ./kxi-c-sdk-${CI_COMMIT_TAG}.zip /opt/dev/$RT_PUB_CPP_DIR
+WORKDIR /opt/dev/$RT_PUB_CPP_DIR 
+RUN ls -l
+RUN unzip kxi-c-sdk-${CI_COMMIT_TAG}.zip && rm kxi-c-sdk-${CI_COMMIT_TAG}.zip
+ENV RT_PUB_CPP_SAMPLES_DIR /opt/dev/${RT_PUB_CPP_DIR}/samples
+RUN mkdir -p ${RT_PUB_CPP_SAMPLES_DIR}
+COPY ./clib/rt_helper/samples ${RT_PUB_CPP_SAMPLES_DIR}
+RUN mkdir  ${RT_PUB_CPP_SAMPLES_DIR}/build
+WORKDIR ${RT_PUB_CPP_SAMPLES_DIR}/build
+RUN cmake .. -DKXI_C_SDK_INCLUDE_DIR:PATH=../kxi_c_sdk/include -DKXI_C_SDK_LINK_DIR:PATH=../kxi_c_sdk && cmake --build .
+WORKDIR /opt/dev/${RT_PUB_CPP_DIR}/samples/build
+
+COPY ./clib/rt_helper/updRTConfig.sh /usr/local/bin/
+COPY ./clib/rt_helper/generate_rt_config.sh /usr/local/bin/
+COPY ./clib/rt_helper/generate_rt_config_for_unit_test.sh /usr/local/bin/ 
+RUN chmod a+x /usr/local/bin/updRTConfig.sh
+
+ENV KXI_C_SDK_BIN_DIR /usr/local/bin
+ENV REPLICATOR_BIN_DIR /usr/local/bin
+ENV RT_LOGLEVEL_CONSOLE "info"
+
+RUN mv `find / -name librt_helper.so` /usr/local/bin/ && \
+    mv `find / -name push_client_static` /usr/local/bin/ && \
+    mv `find / -name pull_client_static` /usr/local/bin/ && \
+    mv `find / -name rest_proxy_static` /usr/local/bin/ && \
+    mv `find / -name replicator_static.so` /usr/local/bin/ && \
+    mv `find / -name rt_helper_curl` /usr/local/bin/ && \
+    mv `find / -name test_csv` /usr/local/bin/ && \
+    mv `find / -name csvupload` /usr/local/bin/ && \
+    mv `find / -name sample.csv` /usr/local/bin/ && \
+    patchelf --set-rpath "\$ORIGIN" /usr/local/bin/test_csv && \
+    patchelf --set-rpath "\$ORIGIN" /usr/local/bin/csvupload && \
+    chown nobody:nobody /usr/local/bin/* && \
+    chmod 544 /usr/local/bin/rt_helper_curl && \
+    chmod 544 /usr/local/bin/push_client_static && \
+    chmod 544 /usr/local/bin/pull_client_static && \
+    chmod 544 /usr/local/bin/rest_proxy_static && \
+    chmod 544 /usr/local/bin/updRTConfig.sh
+    # sed -i '1s|^.*$|. /usr/local/bin/generate_rt_config_for_unit_test.sh|' /usr/local/bin/updRTConfig.sh && \
+    # sed -i 's|generate_rt_config $NAME $TYPE_STRING ${RT_SINK_NAME} $PORT|& 3|g' /usr/local/bin/updRTConfig.sh && \
+    # sed -i 's|csvupload -u $u -s $s -t "trace" < /usr/local/bin/sample.csv|csvupload -u $u -s $s -t "trace" -a 120 < /usr/local/bin/sample.csv|g' /usr/local/bin/updRTConfig.sh
+
+ENTRYPOINT []
+USER nobody

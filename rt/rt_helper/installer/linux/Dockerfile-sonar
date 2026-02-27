@@ -1,0 +1,40 @@
+FROM rockylinux:8.9
+
+ARG CONAN_GITLAB_TOKEN
+
+RUN yum -y install epel-release && yum update -y && yum install which cmake gcc make gcc-c++ patchelf python3 perl -y
+RUN dnf --enablerepo=powertools install libstdc++-static -y
+
+
+# Running pip as the 'root' user can result in broken permissions and 
+# conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: 
+# https://pip.pypa.io/warnings/venv
+RUN python3 -m venv ~/.venv/devel
+RUN . ~/.venv/devel/bin/activate
+
+# Install Conan
+RUN python3 -m pip install --upgrade pip setuptools && \
+    python3 -m pip install conan==1.*
+
+# By default, anything you run in Docker is done as superuser.
+# Conan runs some install commands as superuser, and will prepend `sudo` to
+# these commands, unless `CONAN_SYSREQUIRES_SUDO=0` is in your env variables.
+ENV CONAN_SYSREQUIRES_SUDO 0
+# Some packages request that Conan use the system package manager to install
+# a few dependencies. This flag allows Conan to proceed with these installations;
+# leaving this flag undefined can cause some installation failures.
+ENV CONAN_SYSREQUIRES_MODE enabled
+
+## boost
+ADD clib/deps/boost_1_82_0_headers.tar.gz ./
+RUN cp -r boost /usr/local/include
+
+COPY . /app
+
+WORKDIR /app/clib/rt_helper
+
+RUN conan remote add gitlab https://gitlab.com/api/v4/projects/39565241/packages/conan
+RUN conan user conan-deploy-token -r gitlab -p $CONAN_GITLAB_TOKEN
+RUN conan install .. -s compiler.libcxx=libstdc++11 -s compiler=gcc -r gitlab
+RUN cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release . && make -j
+
